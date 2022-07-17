@@ -55,18 +55,28 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
   Future init() async {
     _date = DateTime.now().D;
     log("init çağırma");
-    await fillGames();
     await fillUsers();
-    firestore.collection("games").snapshots().listen((event) {}).onData((data) {
+    await fillGames();
+    await fillSessions();
+
+    realtime.ref("games").onChildChanged.listen((event) {
       fillGames();
     });
-    firestore
-        .collection("sessions")
-        .snapshots()
-        .listen((event) {})
-        .onData((data) {
+    realtime.ref("sessions").onChildChanged.listen((event) {
       fillSessions();
     });
+
+    // firestore.collection("games").snapshots().listen((event) {}).onData((data) {
+    //   fillGames();
+    // });
+
+    // firestore
+    //     .collection("sessions")
+    //     .snapshots()
+    //     .listen((event) {})
+    //     .onData((data) {
+    //   fillSessions();
+    // });
   }
 
   Future fillGames() async {
@@ -94,18 +104,26 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
     if (selectedGame != null) {
       log("fill sessions");
       sessions.clear();
-      final result = await firestore
-          .collection("sessions")
-          .where("gameId", isEqualTo: selectedGame!.id)
-          .where("date", isEqualTo: date)
+      String day = _date.split("/")[0];
+      String month = _date.split("/")[1];
+      String year = _date.split("/")[2];
+      final result = await realtime
+          .ref("sessions/${selectedGame!.id}/$year/$month/$day")
           .get();
+
+      // final result = await firestore
+      //     .collection("sessions")
+      //     .where("gameId", isEqualTo: selectedGame!.id)
+      //     .where("date", isEqualTo: date)
+      //     .get();
 
       sessions
           .addAll(List.generate(selectedGame!.hours.length, (index) => null));
 
       // ignore: avoid_function_literals_in_foreach_calls
-      result.docs.forEach((element) {
-        final session = SessionModel.fromJson(element.data());
+      result.children.forEach((element) {
+        final session =
+            SessionModel.fromJson(element.value! as Map<String, dynamic>);
         int index = selectedGame!.hours.indexWhere((hour) {
           if (hour == session.hour) {
             return true;
@@ -124,7 +142,10 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
 
   Future<bool> addSession(SessionModel sessionModel) async {
     try {
-      var sessionRef = realtime.ref("sessions").push();
+      var sessionRef = realtime
+          .ref(
+              "sessions/${sessionModel.gameId}/${sessionModel.year}/${sessionModel.month}/${sessionModel.day}")
+          .push();
       String id = sessionRef.key!;
       sessionModel.id = id;
       sessionRef.set(sessionModel.toJson());

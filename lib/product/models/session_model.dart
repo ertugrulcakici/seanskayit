@@ -9,6 +9,10 @@ class SessionModel {
   late bool video;
   late String hour;
 
+  String get day => date.split('/')[0];
+  String get month => date.split('/')[1];
+  String get year => date.split('/')[2];
+
   String? phone;
   String? note;
   num? extra;
