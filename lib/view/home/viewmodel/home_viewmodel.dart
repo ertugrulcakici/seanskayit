@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:developer';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:seanskayit/core/services/firebase/auth_service.dart';
 import 'package:seanskayit/core/services/firebase/firebase_service.dart';
 import 'package:seanskayit/core/utils/datetime_extentions.dart';
@@ -23,6 +24,9 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
     _selectedGame = value;
     fillSessions();
   }
+
+  num get totalIncome => sessions.fold(
+      0, (sum, session) => session != null ? sum + session.income : 0);
 
   num get totalCount => sessions.fold(
       0, (sum, session) => sum + (session != null ? session.count : 0));
@@ -59,24 +63,14 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
     await fillGames();
     await fillSessions();
 
-    realtime.ref("games").onChildChanged.listen((event) {
+    log("fill games listen");
+    realtime.ref("games").onValue.listen((event) {
       fillGames();
     });
-    realtime.ref("sessions").onChildChanged.listen((event) {
+    log("fill sessions listen");
+    realtime.ref("sessions").onValue.listen((event) {
       fillSessions();
     });
-
-    // firestore.collection("games").snapshots().listen((event) {}).onData((data) {
-    //   fillGames();
-    // });
-
-    // firestore
-    //     .collection("sessions")
-    //     .snapshots()
-    //     .listen((event) {})
-    //     .onData((data) {
-    //   fillSessions();
-    // });
   }
 
   Future fillGames() async {
@@ -111,12 +105,6 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
           .ref("sessions/${selectedGame!.id}/$year/$month/$day")
           .get();
 
-      // final result = await firestore
-      //     .collection("sessions")
-      //     .where("gameId", isEqualTo: selectedGame!.id)
-      //     .where("date", isEqualTo: date)
-      //     .get();
-
       sessions
           .addAll(List.generate(selectedGame!.hours.length, (index) => null));
 
@@ -141,76 +129,116 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
   }
 
   Future<bool> addSession(SessionModel sessionModel) async {
+    // done
     try {
-      var sessionRef = realtime
+      EasyLoading.show(status: "Ekleniyor...");
+      final DatabaseReference sessionRef = realtime
           .ref(
               "sessions/${sessionModel.gameId}/${sessionModel.year}/${sessionModel.month}/${sessionModel.day}")
           .push();
-      String id = sessionRef.key!;
-      sessionModel.id = id;
+      sessionModel.id = sessionRef.key!;
+
+      await _addStatistic(sessionModel);
       sessionRef.set(sessionModel.toJson());
-      // String id = firestore.collection("sessions").doc().id;
-      // sessionModel.id = id;
-      // await firestore
-      //     .collection("sessions")
-      //     .doc(id)
-      //     .set(sessionModel.toJson(), SetOptions(merge: true));
-      // await _addStatistic(sessionModel);
-      // PopupHelper.showSimpleSnackbar("Seans eklendi");
+      PopupHelper.showSimpleSnackbar("Seans eklendi");
       return true;
     } catch (e) {
       PopupHelper.showSimpleSnackbar("Seans eklenirken bir hata oluştu: $e");
       return false;
+    } finally {
+      EasyLoading.dismiss();
     }
   }
 
   Future<bool> deleteSession(SessionModel session) async {
+    //  done
     try {
-      await firestore.runTransaction((transaction) async {
-        transaction.delete(firestore.collection("sessions").doc(session.id));
-        String id = firestore.collection("session_logs").doc().id;
-        transaction.set(
-            firestore.collection("session_logs").doc(id),
-            SessionLog(
-              id: id,
-              oldSession: session,
-              date: DateTime.now().D,
-              hour: DateTime.now().H,
-              addedBy: AuthService.instance.currentUser.id,
-            ).toJson());
-        await _deleteStatistic(session);
-      });
-
+      EasyLoading.show(status: "Siliniyor...");
+      await _deleteStatistic(session);
+      DateTime now = DateTime.now();
+      SessionLog sessionLog = SessionLog(
+          date: now.D,
+          hour: now.H,
+          addedBy: AuthService.instance.currentUser.id,
+          oldSession: session);
+      final DatabaseReference sessionLogRef = realtime
+          .ref(
+              "session_logs/${sessionLog.year}/${sessionLog.month}/${sessionLog.day}")
+          .push();
+      sessionLog.id = sessionLogRef.key!;
+      sessionLogRef.set(sessionLog.toJson());
+      await realtime
+          .ref(
+              "sessions/${session.gameId}/${session.year}/${session.month}/${session.day}/${session.id}")
+          .set(null);
+      await _deleteStatistic(session);
       PopupHelper.showSimpleSnackbar("Seans silindi");
       return true;
     } catch (e) {
-      PopupHelper.showSimpleSnackbar("Seans silinirken bir hata oluştu: $e");
       return false;
+    } finally {
+      EasyLoading.dismiss();
     }
+    // try {
+    //   await firestore.runTransaction((transaction) async {
+    //     transaction.delete(firestore.collection("sessions").doc(session.id));
+    //     String id = firestore.collection("session_logs").doc().id;
+    //     transaction.set(
+    //         firestore.collection("session_logs").doc(id),
+    //         SessionLog(
+    //           id: id,
+    //           oldSession: session,
+    //           date: DateTime.now().D,
+    //           hour: DateTime.now().H,
+    //           addedBy: AuthService.instance.currentUser.id,
+    //         ).toJson());
+    //     await _deleteStatistic(session);
+    //   });
+
+    //   PopupHelper.showSimpleSnackbar("Seans silindi");
+    //   return true;
+    // } catch (e) {
+    //   PopupHelper.showSimpleSnackbar("Seans silinirken bir hata oluştu: $e");
+    //   return false;
+    // }
   }
 
   Future updateSession(Map<String, dynamic> data, SessionModel copy) async {
     try {
-      data["note"] = data["note"] ?? FieldValue.delete();
-      data["discount"] = data["discount"] ?? FieldValue.delete();
-      data["extra"] = data["extra"] ?? FieldValue.delete();
-      data["phone"] = data["phone"] ?? FieldValue.delete();
-      data["name"] = data["name"] ?? FieldValue.delete();
-      await firestore.collection("sessions").doc(data["id"]).update(data);
-      DocumentSnapshot doc =
-          await firestore.collection("sessions").doc(data["id"]).get();
-      final addedSession =
-          SessionModel.fromJson(doc.data() as Map<String, dynamic>);
+      EasyLoading.show(status: "Güncelleniyor...");
+      // data["note"] = data["note"] ?? FieldValue.delete();
+      // data["discount"] = data["discount"] ?? FieldValue.delete();
+      // data["extra"] = data["extra"] ?? FieldValue.delete();
+      // data["phone"] = data["phone"] ?? FieldValue.delete();
+      // data["name"] = data["name"] ?? FieldValue.delete();
+      data.forEach((key, value) {
+        log("$key: $value");
+      });
+      String day = data["date"].split("/")[0];
+      String month = data["date"].split("/")[1];
+      String year = data["date"].split("/")[2];
+      String gameId = data["gameId"];
+      await realtime
+          .ref(
+              "sessions/${copy.gameId}/${copy.year}/${copy.month}/${copy.day}/${copy.id}")
+          .set(null);
+      await realtime
+          .ref("sessions/$gameId/$year/$month/$day/${copy.id}")
+          .set(data);
+      final addedSession = SessionModel.fromJson(data);
       if (copy.isNotEqualValues(addedSession)) {
-        String id = firestore.collection("session_logs").doc().id;
-        await firestore.collection("session_logs").doc(id).set(SessionLog(
-              id: id,
-              oldSession: copy,
-              newSession: addedSession,
-              date: DateTime.now().D,
-              hour: DateTime.now().H,
-              addedBy: AuthService.instance.currentUser.id,
-            ).toJson());
+        DateTime now = DateTime.now();
+        final DatabaseReference sessionLogRef =
+            realtime.ref("session_logs/$year/$month/$day").push();
+        final sessionLogModel = SessionLog(
+            id: sessionLogRef.key!,
+            date: now.D,
+            hour: now.H,
+            addedBy: AuthService.instance.currentUser.id,
+            oldSession: copy,
+            newSession: addedSession);
+        sessionLogRef.set(sessionLogModel.toJson());
+
         await _updateStatistic(copy, addedSession);
       }
 
@@ -220,6 +248,8 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
       PopupHelper.showSimpleSnackbar(
           "Seans güncellenirken bir hata oluştu: $e");
       return false;
+    } finally {
+      EasyLoading.dismiss();
     }
   }
 
@@ -244,6 +274,7 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
     String year = dateString.split("/")[0];
     String month = dateString.split("/")[1];
     String day = dateString.split("/")[2];
+    log("year: $year, month: $month, day: $day");
 
     final gameRef = realtime.ref("statistic/${sessionModel.gameId}/");
 
@@ -279,106 +310,85 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
     }
 
     //video
-    final videoRef = gameRef.child("video/$dateString");
-    final videoData = await videoRef.get();
-    if (videoData.exists) {
-      log("update video");
-      num newValue = (videoData.value as num) + (sessionModel.video ? 1 : 0);
-      await videoRef.set(newValue);
-      await videoRef.parent!
-          .update({"total": FieldValue.increment(sessionModel.video ? 1 : 0)});
-      await videoRef.parent!.parent!
-          .update({"total": FieldValue.increment(sessionModel.video ? 1 : 0)});
-      await videoRef.parent!.parent!.parent!
-          .update({"total": FieldValue.increment(sessionModel.video ? 1 : 0)});
-    } else {
-      log("set video");
-      await videoRef.set(sessionModel.video ? 1 : 0);
-      await videoRef.parent!.update({"total": sessionModel.video ? 1 : 0});
-      await videoRef.parent!.parent!
-          .update({"total": sessionModel.video ? 1 : 0});
-      await videoRef.parent!.parent!.parent!
-          .update({"total": sessionModel.video ? 1 : 0});
+    if (sessionModel.video) {
+      final videoRef = gameRef.child("video/$dateString");
+      final videoData = await videoRef.get();
+      if (videoData.exists) {
+        log("update video");
+        num newValue = (videoData.value as num) + 1;
+        await videoRef.set(newValue);
+        await videoRef.parent!.update({"total": newValue});
+        await videoRef.parent!.parent!.update({"total": newValue});
+        await videoRef.parent!.parent!.parent!.update({"total": newValue});
+      } else {
+        log("set video");
+        await videoRef.set(1);
+        await videoRef.parent!.update({"total": 1});
+        await videoRef.parent!.parent!.update({"total": 1});
+        await videoRef.parent!.parent!.parent!.update({"total": 1});
+      }
     }
 
-    // //extra
-    // final extraRef = gameRef.child("extra/$dateString");
-    // final extraData = await extraRef.get();
-    // if (extraData.exists) {
-    //   await extraRef.set((extraData.value as num) + (sessionModel.extra ?? 0));
-    // } else {
-    //   await extraRef.set(sessionModel.extra ?? 0);
-    //   await gameRef.child("extra").update({"total": sessionModel.extra ?? 0});
-    //   await gameRef
-    //       .child("extra/$year")
-    //       .update({"total": sessionModel.extra ?? 0});
-    //   await gameRef
-    //       .child("extra/$year/$month")
-    //       .update({"total": sessionModel.extra ?? 0});
-    // }
-    // await gameRef
-    //     .child("extra")
-    //     .update({"total": FieldValue.increment(sessionModel.extra ?? 0)});
-    // await gameRef
-    //     .child("extra/$year")
-    //     .update({"total": FieldValue.increment(sessionModel.extra ?? 0)});
-    // await gameRef
-    //     .child("extra/$year/$month")
-    //     .update({"total": FieldValue.increment(sessionModel.extra ?? 0)});
+    if (sessionModel.extra != null) {
+      final extraRef = gameRef.child("extra/$dateString");
+      final extraData = await extraRef.get();
+      if (extraData.exists) {
+        log("update extra");
+        num newValue = (extraData.value as num) + sessionModel.extra!;
+        await extraRef.set(newValue);
+        await extraRef.parent!.update({"total": newValue});
+        await extraRef.parent!.parent!.update({"total": newValue});
+        await extraRef.parent!.parent!.parent!.update({"total": newValue});
+      } else {
+        log("set extra");
+        await extraRef.set(sessionModel.extra!);
+        await extraRef.parent!.update({"total": sessionModel.extra!});
+        await extraRef.parent!.parent!.update({"total": sessionModel.extra!});
+        await extraRef.parent!.parent!.parent!
+            .update({"total": sessionModel.extra!});
+      }
+    }
 
-    // //discount
-    // final discountRef = gameRef.child("discount/$dateString");
-    // final discountData = await discountRef.get();
-    // if (discountData.exists) {
-    //   await discountRef
-    //       .set((discountData.value as num) + (sessionModel.discount ?? 0));
-    // } else {
-    //   await discountRef.set(sessionModel.discount ?? 0);
-    //   await gameRef
-    //       .child("discount")
-    //       .update({"total": sessionModel.discount ?? 0});
-    //   await gameRef
-    //       .child("discount/$year")
-    //       .update({"total": sessionModel.discount ?? 0});
-    //   await gameRef
-    //       .child("discount/$year/$month")
-    //       .update({"total": sessionModel.discount ?? 0});
-    // }
-    // await gameRef
-    //     .child("discount")
-    //     .update({"total": FieldValue.increment(sessionModel.discount ?? 0)});
-    // await gameRef
-    //     .child("discount/$year")
-    //     .update({"total": FieldValue.increment(sessionModel.discount ?? 0)});
-    // await gameRef
-    //     .child("discount/$year/$month")
-    //     .update({"total": FieldValue.increment(sessionModel.discount ?? 0)});
+    //discount
+    if (sessionModel.discount != null) {
+      final discountRef = gameRef.child("discount/$dateString");
+      final discountData = await discountRef.get();
+      if (discountData.exists) {
+        log("update discount");
+        num newValue = (discountData.value as num) + sessionModel.discount!;
+        await discountRef.set(newValue);
+        await discountRef.parent!.update({"total": newValue});
+        await discountRef.parent!.parent!.update({"total": newValue});
+        await discountRef.parent!.parent!.parent!.update({"total": newValue});
+      } else {
+        log("set discount");
+        await discountRef.set(sessionModel.discount!);
+        await discountRef.parent!.update({"total": sessionModel.discount!});
+        await discountRef.parent!.parent!
+            .update({"total": sessionModel.discount!});
+        await discountRef.parent!.parent!.parent!
+            .update({"total": sessionModel.discount!});
+      }
+    }
 
-    // //count
-    // final countRef = gameRef.child("count/$dateString");
-    // final countData = await countRef.get();
-    // if (countData.exists) {
-    //   await countRef.set((countData.value as num) + sessionModel.count);
-    // } else {
-    //   await countRef.set(sessionModel.count);
-    //   await gameRef.child("count").update({"total": sessionModel.count});
-    //   log("count total oluştu");
-    //   await gameRef.child("count/$year").update({"total": sessionModel.count});
-    //   log("count/$year total oluştu");
-    //   await gameRef
-    //       .child("count/$year/$month")
-    //       .update({"total": sessionModel.count});
-    //   log("count/$year/$month total oluştu");
-    // }
-    // await gameRef
-    //     .child("count")
-    //     .update({"total": FieldValue.increment(sessionModel.count)});
-    // await gameRef
-    //     .child("count/$year")
-    //     .update({"total": FieldValue.increment(sessionModel.count)});
-    // await gameRef
-    //     .child("count/$year/$month")
-    //     .update({"total": FieldValue.increment(sessionModel.count)});
+    //count
+    final countRef = gameRef.child("count/$dateString");
+    final countData = await countRef.get();
+    if (countData.exists) {
+      log("update count");
+      num newValue = (countData.value as num) + sessionModel.count;
+      await countRef.set(newValue);
+      await countRef.parent!.update({"total": newValue});
+      await countRef.parent!.parent!.update({"total": newValue});
+      await countRef.parent!.parent!.parent!.update({"total": newValue});
+    } else {
+      log("set count");
+      await countRef.set(sessionModel.count);
+      await countRef.parent!.update({"total": sessionModel.count});
+      await countRef.parent!.parent!.update({"total": sessionModel.count});
+      await countRef.parent!.parent!.parent!
+          .update({"total": sessionModel.count});
+    }
   }
 
   Future _deleteStatistic(SessionModel sessionModel) async {
@@ -387,40 +397,61 @@ class HomeViewModel extends ChangeNotifier with FirebaseService {
     final gameRef = realtime.ref("statistic/${sessionModel.gameId}/");
     final incomeRef = gameRef.child("income/$dateString");
     final incomeData = await incomeRef.get();
-    if (incomeData.exists) {
-      incomeRef.set((incomeData.value as num) - sessionModel.income);
-    } else {
-      incomeRef.set(sessionModel.income);
+    await incomeRef.set((incomeData.value as num) - sessionModel.income);
+    await incomeRef.parent!
+        .update({"total": (incomeData.value as num) - sessionModel.income});
+    await incomeRef.parent!.parent!
+        .update({"total": (incomeData.value as num) - sessionModel.income});
+    await incomeRef.parent!.parent!.parent!
+        .update({"total": (incomeData.value as num) - sessionModel.income});
+
+    if (sessionModel.video) {
+      final videoRef = gameRef.child("video/$dateString");
+      final videoData = await videoRef.get();
+      await videoRef.set((videoData.value as num) - 1);
+      await videoRef.parent!.update({"total": (videoData.value as num) - 1});
+      await videoRef.parent!.parent!
+          .update({"total": (videoData.value as num) - 1});
     }
-    final videoRef = gameRef.child("video/$dateString");
-    final videoData = await videoRef.get();
-    if (videoData.exists) {
-      videoRef.set((videoData.value as num) - (sessionModel.video ? 1 : 0));
-    } else {
-      videoRef.set(sessionModel.video ? 1 : 0);
+
+    if (sessionModel.extra != null) {
+      final extraRef = gameRef.child("extra/$dateString");
+      final extraData = await extraRef.get();
+
+      await extraRef.set((extraData.value as num) - (sessionModel.extra ?? 0));
+      await extraRef.parent!.update(
+          {"total": (extraData.value as num) - (sessionModel.extra ?? 0)});
+      await extraRef.parent!.parent!.update(
+          {"total": (extraData.value as num) - (sessionModel.extra ?? 0)});
+      await extraRef.parent!.parent!.parent!.update(
+          {"total": (extraData.value as num) - (sessionModel.extra ?? 0)});
     }
-    final extraRef = gameRef.child("extra/$dateString");
-    final extraData = await extraRef.get();
-    if (extraData.exists) {
-      extraRef.set((extraData.value as num) - (sessionModel.extra ?? 0));
-    } else {
-      extraRef.set(sessionModel.extra ?? 0);
-    }
-    final discountRef = gameRef.child("discount/$dateString");
-    final discountData = await discountRef.get();
-    if (discountData.exists) {
-      discountRef
+
+    if (sessionModel.discount != null) {
+      final discountRef = gameRef.child("discount/$dateString");
+      final discountData = await discountRef.get();
+      await discountRef
           .set((discountData.value as num) - (sessionModel.discount ?? 0));
-    } else {
-      discountRef.set(sessionModel.discount ?? 0);
+      await discountRef.parent!.update({
+        "total": (discountData.value as num) - (sessionModel.discount ?? 0)
+      });
+      await discountRef.parent!.parent!.update({
+        "total": (discountData.value as num) - (sessionModel.discount ?? 0)
+      });
+      await discountRef.parent!.parent!.parent!.update({
+        "total": (discountData.value as num) - (sessionModel.discount ?? 0)
+      });
     }
+
     final countRef = gameRef.child("count/$dateString");
     final countData = await countRef.get();
-    if (countData.exists) {
-      countRef.set((countData.value as num) - sessionModel.count);
-    } else {
-      countRef.set(sessionModel.count);
-    }
+    await countRef.set((countData.value as num) - sessionModel.count);
+    await countRef.parent!
+        .update({"total": (countData.value as num) - sessionModel.count});
+    await countRef.parent!.parent!
+        .update({"total": (countData.value as num) - sessionModel.count});
+    await countRef.parent!.parent!.parent!
+        .update({"total": (countData.value as num) - sessionModel.count});
   }
 
   Future _updateStatistic(SessionModel oldModel, SessionModel newModel) async {

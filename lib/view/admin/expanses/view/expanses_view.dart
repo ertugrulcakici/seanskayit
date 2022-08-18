@@ -13,8 +13,6 @@ class ExpansesView extends ConsumerStatefulWidget {
 }
 
 class _ExpansesViewState extends ConsumerState<ExpansesView> {
-  String _date = DateTime.now().toD();
-
   ChangeNotifierProvider<ExpanseViewModel> provider =
       ChangeNotifierProvider<ExpanseViewModel>(
     (ref) => ExpanseViewModel(),
@@ -24,7 +22,7 @@ class _ExpansesViewState extends ConsumerState<ExpansesView> {
   void initState() {
     ref.read(provider).fillUsers().then((value) {
       ref.read(provider).fillCategories().then((value) {
-        ref.read(provider).fillExpanses(_date);
+        ref.read(provider).fillExpanses();
       });
     });
     super.initState();
@@ -33,11 +31,17 @@ class _ExpansesViewState extends ConsumerState<ExpansesView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          ref.read(provider).deneme();
+        },
+        child: const Icon(Icons.add),
+      ),
       appBar: AppBar(
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            Text(_date),
+            Text(ref.watch(provider).date),
             IconButton(
                 onPressed: _pickDate, icon: const Icon(Icons.date_range)),
             Text("Toplam: ${ref.watch(provider).total}"),
@@ -84,8 +88,8 @@ class _ExpansesViewState extends ConsumerState<ExpansesView> {
         firstDate: DateTime.now().subtract(const Duration(days: 365 * 5)),
         lastDate: DateTime.now().add(const Duration(days: 365 * 5)));
     if (datetime != null) {
-      _date = datetime.toD();
-      ref.watch(provider).fillExpanses(_date);
+      ref.watch(provider).date = datetime.toD();
+      ref.watch(provider).fillExpanses();
     }
   }
 }

@@ -29,11 +29,15 @@ class SessionView extends ConsumerStatefulWidget {
 class _SessionViewState extends ConsumerState<SessionView> {
   late bool willAdd;
 
+  String lastNumber = "";
+
   Map<String, dynamic> data = {"video": false};
   GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  late TextEditingController _numberController;
 
   @override
   void initState() {
+    _numberController = TextEditingController();
     willAdd = widget.session == null;
     if (!willAdd) {
       data = widget.session!.toJson();
@@ -53,7 +57,8 @@ class _SessionViewState extends ConsumerState<SessionView> {
     return Scaffold(
       floatingActionButton: willAdd ? addFAB() : updateFABs(),
       appBar: AppBar(
-        title: const Text('Seans'),
+        title: Text(
+            'Tarih: ${ref.watch(widget.provider).date} saat: ${ref.read(widget.provider).selectedGame!.hours[widget.index]}'),
       ),
       body: FocusTraversalGroup(
         policy: OrderedTraversalPolicy(),
@@ -96,6 +101,21 @@ class _SessionViewState extends ConsumerState<SessionView> {
                           const InputDecoration(labelText: 'Kişi sayısı'),
                     ),
                     TextFormField(
+                      keyboardType: TextInputType.number,
+                      controller: _numberController,
+                      onChanged: (value) {
+                        if (lastNumber.length < value.length) {
+                          if (value.length == 3) {
+                            _numberController.text = '$value ';
+                          } else if (value.length == 7) {
+                            _numberController.text = '$value ';
+                          }
+                        }
+                        _numberController.selection =
+                            TextSelection.fromPosition(TextPosition(
+                                offset: _numberController.text.length));
+                        lastNumber = _numberController.text;
+                      },
                       initialValue: !willAdd
                           ? widget.session!.phone
                               .toString()
@@ -111,7 +131,14 @@ class _SessionViewState extends ConsumerState<SessionView> {
                         }
                         data.remove("phone");
                       },
-                      decoration: const InputDecoration(labelText: 'Tel no'),
+                      decoration: InputDecoration(
+                          labelText: 'Tel no (xxx-xxx-xxxx)',
+                          suffixIcon: IconButton(
+                              onPressed: () {
+                                _numberController.clear();
+                              },
+                              icon: const Icon(Icons.clear)),
+                          hintText: "xxx-xxx-xxxx"),
                     ),
                     TextFormField(
                       initialValue: !willAdd

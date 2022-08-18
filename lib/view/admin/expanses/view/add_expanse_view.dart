@@ -22,7 +22,6 @@ class _AddExpanseViewState extends ConsumerState<AddExpanseView> {
   final TextEditingController _categoryController = TextEditingController();
 
   GlobalKey<FormState> formKey = GlobalKey<FormState>();
-  String _dateTime = DateTime.now().toD();
 
   @override
   void initState() {
@@ -43,7 +42,7 @@ class _AddExpanseViewState extends ConsumerState<AddExpanseView> {
           TextButton.icon(
               onPressed: _pickDate,
               icon: const Icon(Icons.date_range),
-              label: Text(_dateTime))
+              label: Text(ref.watch(provider).date))
         ],
         centerTitle: true,
       ),
@@ -103,9 +102,7 @@ class _AddExpanseViewState extends ConsumerState<AddExpanseView> {
         lastDate: DateTime(DateTime.now().year + 5),
         locale: const Locale("tr"));
     if (date != null) {
-      setState(() {
-        _dateTime = date.toD();
-      });
+      ref.watch(provider).date = date.toD();
     }
   }
 
@@ -125,14 +122,14 @@ class _AddExpanseViewState extends ConsumerState<AddExpanseView> {
                   .read(provider)
                   .addCategory(_categoryController.text);
               if (newCategoryId != null) {
-                PopupHelper.showSimpleSnackbar("Kategori eklendi");
+                PopupHelper.showSimpleSnackbar("Kategori eklendi",
+                    milliSecond: 2000);
                 try {
                   double amout = double.parse(
                       _amountController.text.trim().replaceAll(",", "."));
                   if (await ref.read(provider).addExpanse(
                         amount: amout,
                         categoryId: newCategoryId,
-                        date: _dateTime,
                       )) {
                     PopupHelper.showSimpleSnackbar("Gider eklendi");
                     formKey.currentState!.reset();
@@ -157,7 +154,6 @@ class _AddExpanseViewState extends ConsumerState<AddExpanseView> {
         if (await ref.read(provider).addExpanse(
               amount: amout,
               categoryId: categoryId,
-              date: _dateTime,
             )) {
           PopupHelper.showSimpleSnackbar("Gider eklendi");
           formKey.currentState!.reset();

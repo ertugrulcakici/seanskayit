@@ -60,7 +60,7 @@ String? validateInt(String? value) {
   return null;
 }
 
-// create a number validator with form of xxx-xxx-xx-xx
+// create a number validator with form of xxx-xxx-xxxx
 String? validatePhoneNumber(String? value) {
   if (value == null) {
     return null;
@@ -69,7 +69,7 @@ String? validatePhoneNumber(String? value) {
     return null;
   }
   List<String> splitted = value.split(" ");
-  if (splitted.length == 4 || splitted.length == 3) {
+  if (splitted.length == 3) {
     bool done = true;
     for (var element in splitted) {
       if (int.tryParse(element) == null) {
@@ -77,19 +77,14 @@ String? validatePhoneNumber(String? value) {
       }
     }
 
-    if (splitted.length == 4) {
-      if (splitted[0].length != 3 ||
-          splitted[1].length != 3 ||
-          splitted[2].length != 2 ||
-          splitted[3].length != 2) {
-        done = false;
-      }
-    } else if (splitted.length == 3) {
+    if (splitted.length == 3) {
       if (splitted[0].length != 3 ||
           splitted[1].length != 3 ||
           splitted[2].length != 4) {
         done = false;
       }
+    } else {
+      done = false;
     }
 
     if (done) {

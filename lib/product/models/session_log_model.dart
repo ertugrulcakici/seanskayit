@@ -8,6 +8,10 @@ class SessionLog {
   String hour;
   String addedBy;
 
+  String get day => date.split('/')[0];
+  String get month => date.split('/')[1];
+  String get year => date.split('/')[2];
+
   SessionLogType get type =>
       newSession == null ? SessionLogType.delete : SessionLogType.update;
 

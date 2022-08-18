@@ -55,9 +55,12 @@ class _HomeViewState extends ConsumerState<HomeView> {
               childAspectRatio: 1.0),
           itemBuilder: (context, index) {
             if (index == ref.watch(provider).selectedGame!.hours.length) {
-              return Center(
-                  child: Text(
-                      "Toplam kişi: ${ref.watch(provider).totalCount}\nToplam video: ${ref.watch(provider).totalVideoCount}${ref.watch(provider).totalExtraCount > 0 ? "\nToplam ekstra: ${ref.watch(provider).totalExtraCount}" : ""}${ref.watch(provider).totalDiscountCount > 0 ? "\nToplam indirim: ${ref.watch(provider).totalDiscountCount}" : ""}"));
+              return Visibility(
+                visible: AuthService.instance.currentUser.isAdmin,
+                child: Center(
+                    child: Text(
+                        "Toplam gelir: ${ref.watch(provider).totalIncome} Toplam kişi: ${ref.watch(provider).totalCount}\nToplam video: ${ref.watch(provider).totalVideoCount}${ref.watch(provider).totalExtraCount > 0 ? "\nToplam ekstra: ${ref.watch(provider).totalExtraCount}" : ""}${ref.watch(provider).totalDiscountCount > 0 ? "\nToplam indirim: ${ref.watch(provider).totalDiscountCount}" : ""}")),
+              );
             }
             String hour = ref.watch(provider).selectedGame!.hours[index];
             String currentHour = DateTime.now().H;
